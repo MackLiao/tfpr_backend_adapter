@@ -1,0 +1,41 @@
+repositories:
+  BrentLab/kemmeren_2014:
+    dataset:
+      kemmeren_2014:
+        db_name: kemmeren
+        sample_id:
+          field: sample_id
+  BrentLab/harbison_2004:
+    dataset:
+      harbison_2004:
+        db_name: harbison
+        sample_id:
+          field: sample_id
+  BrentLab/hughes_2006:
+    dataset:
+      overexpression:
+        db_name: hughes_overexpression
+        sample_id:
+          field: sample_id
+      knockout:
+        db_name: hughes_knockout
+        sample_id:
+          field: sample_id
+  BrentLab/mahendrawada_2025:
+    dataset:
+      chec_mahendrawada_m2025_af_combined:
+        db_name: mahendrawada_chec_combined
+        sample_id:
+          field: sample_id
+      chec_mahendrawada_m2025_af_combined_meta:
+        db_name: mahendrawada_chec_combined_regmeta
+        sample_id:
+          field: sample_id
+      degron_counts:
+        db_name: mahendrawada_degron
+        sample_id:
+          field: sra_accession
+      degron_counts_meta:
+        db_name: mahendrawada_degron_regmeta
+        sample_id:
+          field: sra_accession
