@@ -114,16 +114,32 @@ def filter_options(
     """Get filter metadata for all columns in a _meta view (for filter UI)."""
     table = _validate_identifier(table)
     with lock:
-        fields = vdb.get_fields(table)
-        type_map = _column_type_map(vdb, table)
+        available_tables = set(vdb.tables())
+        query_table = table
+
+        if query_table not in available_tables and table.endswith("_meta"):
+            dataset_name = table[: -len("_meta")]
+            for candidate in _candidate_regulator_tables(dataset_name):
+                candidate = _validate_identifier(candidate)
+                if candidate in available_tables:
+                    query_table = candidate
+                    break
+            else:
+                if dataset_name in getattr(vdb, "_db_name_map", {}):
+                    # Dataset is configured but not currently registered (e.g. unavailable
+                    # source data); return no options instead of failing the selection UI.
+                    return []
+
+        fields = vdb.get_fields(query_table)
+        type_map = _column_type_map(vdb, query_table)
         result: list[FilterOption] = []
         for field in fields:
-            if field == "sample_id":
+            if field in {"sample_id", "sra_accession", "id"}:
                 continue
             if _is_numeric_column_type(type_map.get(field)):
                 range_df = vdb.query(
                     f"SELECT MIN({field}) AS min_value, MAX({field}) AS max_value "
-                    f"FROM {table} WHERE {field} IS NOT NULL"
+                    f"FROM {query_table} WHERE {field} IS NOT NULL"
                 )
                 min_value = _normalize_numeric_stat(range_df["min_value"].iloc[0])
                 max_value = _normalize_numeric_stat(range_df["max_value"].iloc[0])
@@ -140,7 +156,7 @@ def filter_options(
                 continue
 
             df = vdb.query(
-                f"SELECT DISTINCT {field} FROM {table} "
+                f"SELECT DISTINCT {field} FROM {query_table} "
                 f"WHERE {field} IS NOT NULL ORDER BY {field}"
             )
             values = [str(v) for v in df[field].tolist()]
@@ -163,10 +179,14 @@ def compute_intersection(
     # Build regulator sets for each dataset
     regulator_sets: dict[str, set[str]] = {}
     with lock:
+        available_tables = set(vdb.tables())
+        configured_datasets = set(getattr(vdb, "_db_name_map", {}).keys())
+
         for ds_name in dataset_names:
             base_meta_table = _validate_identifier(f"{ds_name}_meta")
-            base_fields = vdb.get_fields(base_meta_table)
-            where_sql = _build_where_sql(body, ds_name)
+            base_meta_available = base_meta_table in available_tables
+            base_fields = vdb.get_fields(base_meta_table) if base_meta_available else []
+            where_sql = _build_where_sql(body, ds_name) if base_meta_available else ""
 
             resolved = False
             checked_tables: list[str] = []
@@ -174,6 +194,8 @@ def compute_intersection(
 
             for table in _candidate_regulator_tables(ds_name):
                 table = _validate_identifier(table)
+                if table not in available_tables:
+                    continue
                 checked_tables.append(table)
                 try:
                     fields = vdb.get_fields(table)
@@ -191,26 +213,41 @@ def compute_intersection(
                         f"FROM {table}{where_sql}"
                     )
                 else:
-                    if base_sample_field is None:
-                        base_sample_field = _resolve_sample_identifier(
-                            base_fields, base_meta_table
+                    if not where_sql:
+                        # No filters on the base metadata table: use supplemental
+                        # regulator metadata directly, avoiding unreliable sample-id joins.
+                        sql = (
+                            f"SELECT DISTINCT src.{regulator_field} AS regulator "
+                            f"FROM {table} AS src"
                         )
-                    source_sample_field = _resolve_join_sample_identifier(
-                        fields=fields,
-                        table=table,
-                        preferred=base_sample_field,
-                    )
-                    filtered_samples_sql = (
-                        f"SELECT DISTINCT {base_sample_field} AS __sample_id "
-                        f"FROM {base_meta_table}{where_sql}"
-                    )
-                    sql = (
-                        f"SELECT DISTINCT src.{regulator_field} AS regulator "
-                        f"FROM {table} AS src "
-                        f"JOIN ({filtered_samples_sql}) AS f "
-                        f"ON CAST(src.{source_sample_field} AS VARCHAR) = "
-                        f"CAST(f.__sample_id AS VARCHAR)"
-                    )
+                    elif base_meta_available:
+                        if base_sample_field is None:
+                            base_sample_field = _resolve_sample_identifier(
+                                base_fields, base_meta_table
+                            )
+                        source_sample_field = _resolve_join_sample_identifier(
+                            fields=fields,
+                            table=table,
+                            preferred=base_sample_field,
+                        )
+                        filtered_samples_sql = (
+                            f"SELECT DISTINCT {base_sample_field} AS __sample_id "
+                            f"FROM {base_meta_table}{where_sql}"
+                        )
+                        sql = (
+                            f"SELECT DISTINCT src.{regulator_field} AS regulator "
+                            f"FROM {table} AS src "
+                            f"JOIN ({filtered_samples_sql}) AS f "
+                            f"ON CAST(src.{source_sample_field} AS VARCHAR) = "
+                            f"CAST(f.__sample_id AS VARCHAR)"
+                        )
+                    else:
+                        # Dataset is configured but no *_meta table was registered;
+                        # fall back to direct regulator extraction from source table.
+                        sql = (
+                            f"SELECT DISTINCT src.{regulator_field} AS regulator "
+                            f"FROM {table} AS src"
+                        )
 
                 df = vdb.query(sql)
                 regulator_sets[ds_name] = set(
@@ -220,6 +257,14 @@ def compute_intersection(
                 break
 
             if not resolved:
+                if ds_name in configured_datasets and not checked_tables:
+                    raise ValueError(
+                        f"Dataset '{ds_name}' is configured but no SQL views were "
+                        "registered for it. This usually means source parquet files "
+                        "were not downloaded (for private/gated repos, ensure a valid "
+                        "Hugging Face token is configured)."
+                    )
+
                 checked = ", ".join(checked_tables) if checked_tables else "<none>"
                 raise ValueError(
                     f"No regulator metadata found for dataset '{ds_name}'. "

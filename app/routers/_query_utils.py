@@ -35,7 +35,7 @@ _REGULATOR_IDENTIFIER_CANDIDATES = (
     "regulator_locus_tag",
     "gene_symbol",
 )
-_SAMPLE_IDENTIFIER_CANDIDATES = ("sample_id", "sra_accession")
+_SAMPLE_IDENTIFIER_CANDIDATES = ("sample_id", "sra_accession", "id")
 
 
 def _validate_identifier(name: str) -> str:
@@ -43,6 +43,11 @@ def _validate_identifier(name: str) -> str:
     if not _IDENTIFIER_RE.match(name):
         raise ValueError(f"Invalid identifier: {name!r}")
     return name
+
+
+def _qi(name: str) -> str:
+    """Quote a validated identifier for use in SQL (handles reserved keywords)."""
+    return f'"{name}"'
 
 
 def _resolve_regulator_identifier(fields: list[str], table: str) -> str:

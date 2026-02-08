@@ -15,13 +15,13 @@ from app.dataset_catalog import (
     DATASET_CATALOG_BY_ID,
     MANAGED_DATASET_KEYS,
     DatasetCatalogItem,
-    SupplementalDatasetConfig,
 )
 from app.dependencies import get_vdb, get_vdb_lock
 from app.schemas import (
     ActiveSetConfigSyncRequest,
     ActiveSetConfigSyncResponse,
     DatasetCatalogEntry,
+    SupplementalCatalogEntry,
 )
 
 router = APIRouter(tags=["active-set-config"])
@@ -148,11 +148,7 @@ def _prune_managed_dataset_entries(payload: dict) -> None:
             del repositories[repo_id]
 
 
-def _dataset_config_entry(
-    *,
-    db_name: str,
-    sample_id_field: str,
-) -> dict:
+def _dataset_config_entry(*, db_name: str, sample_id_field: str) -> dict:
     return {
         "db_name": db_name,
         "sample_id": {
@@ -172,21 +168,10 @@ def _append_selected_datasets(payload: dict, selected: list[DatasetCatalogItem])
             sample_id_field=item.sample_id_field,
         )
         for supplemental in item.supplemental_configs:
-            _append_supplemental_dataset(
-                dataset_cfg=dataset_cfg,
-                supplemental=supplemental,
+            dataset_cfg[supplemental.config_name] = _dataset_config_entry(
+                db_name=supplemental.db_name,
+                sample_id_field=supplemental.sample_id_field,
             )
-
-
-def _append_supplemental_dataset(
-    *,
-    dataset_cfg: dict,
-    supplemental: SupplementalDatasetConfig,
-) -> None:
-    dataset_cfg[supplemental.config_name] = _dataset_config_entry(
-        db_name=supplemental.db_name,
-        sample_id_field=supplemental.sample_id_field,
-    )
 
 
 def _write_metadata_config(path: Path, payload: dict) -> None:
@@ -204,10 +189,31 @@ def dataset_catalog(
 
     result: list[DatasetCatalogEntry] = []
     for item in DATASET_CATALOG:
-        columns = _config_columns(item.repo_id, settings.hf_token).get(item.config_name, [])
-        estimated_rows, num_columns = _config_size_map(item.repo_id, settings.hf_token).get(
-            item.config_name, (None, None)
-        )
+        columns_by_config = _config_columns(item.repo_id, settings.hf_token)
+        size_by_config = _config_size_map(item.repo_id, settings.hf_token)
+        columns = columns_by_config.get(item.config_name, [])
+        estimated_rows, num_columns = size_by_config.get(item.config_name, (None, None))
+        supplemental_entries: list[SupplementalCatalogEntry] = []
+
+        for supplemental in item.supplemental_configs:
+            supplemental_columns = columns_by_config.get(supplemental.config_name, [])
+            supplemental_rows, supplemental_num_columns = size_by_config.get(
+                supplemental.config_name, (None, None)
+            )
+            supplemental_entries.append(
+                SupplementalCatalogEntry(
+                    config_name=supplemental.config_name,
+                    db_name=supplemental.db_name,
+                    sample_id_field=supplemental.sample_id_field,
+                    estimated_rows=supplemental_rows,
+                    num_columns=(
+                        supplemental_num_columns
+                        if supplemental_num_columns is not None
+                        else (len(supplemental_columns) or None)
+                    ),
+                    column_names=supplemental_columns,
+                )
+            )
 
         result.append(
             DatasetCatalogEntry(
@@ -220,6 +226,7 @@ def dataset_catalog(
                 estimated_rows=estimated_rows,
                 num_columns=num_columns if num_columns is not None else (len(columns) or None),
                 column_names=columns,
+                supplemental_configs=supplemental_entries,
                 selectable=item.selectable,
                 is_active=item.id in active_ids,
                 unsupported_reason=item.unsupported_reason,

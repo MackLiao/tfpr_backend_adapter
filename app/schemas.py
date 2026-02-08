@@ -33,6 +33,17 @@ class DatasetInfo(BaseModel, frozen=True):
     is_comparative: bool
 
 
+class SupplementalCatalogEntry(BaseModel, frozen=True):
+    """Supplemental dataset config loaded with a primary active-set dataset."""
+
+    config_name: str
+    db_name: str
+    sample_id_field: str
+    estimated_rows: int | None = None
+    num_columns: int | None = None
+    column_names: list[str] = Field(default_factory=list)
+
+
 class DatasetCatalogEntry(BaseModel, frozen=True):
     """Dataset available for Active Set configuration."""
 
@@ -45,6 +56,7 @@ class DatasetCatalogEntry(BaseModel, frozen=True):
     estimated_rows: int | None = None
     num_columns: int | None = None
     column_names: list[str] = Field(default_factory=list)
+    supplemental_configs: list[SupplementalCatalogEntry] = Field(default_factory=list)
     selectable: bool = True
     is_active: bool = False
     unsupported_reason: str | None = None
@@ -152,9 +164,9 @@ class CorrelationRequest(BaseModel, frozen=True):
     """Request body for correlation matrix computation."""
 
     db_name: str
-    method: str = "pearson"
-    value_column: str = "effect"
-    group_by: str = "regulator"
+    method: Literal["pearson", "spearman"] = "pearson"
+    value_column: str
+    group_by: Literal["regulator", "sample"] = "regulator"
     max_items: int = Field(default=50, ge=2, le=200)
 
 

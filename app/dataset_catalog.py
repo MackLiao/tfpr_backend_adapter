@@ -76,6 +76,21 @@ DATASET_CATALOG: tuple[DatasetCatalogItem, ...] = (
         ),
     ),
     DatasetCatalogItem(
+        id="callingcards",
+        name="Calling Cards",
+        repo_id="BrentLab/callingcards",
+        config_name="annotated_features",
+        db_name="calling_cards",
+        sample_id_field="id",
+        supplemental_configs=(
+            SupplementalDatasetConfig(
+                config_name="annotated_features_meta",
+                db_name="calling_cards_regmeta",
+                sample_id_field="id",
+            ),
+        ),
+    ),
+    DatasetCatalogItem(
         id="mahendrawada_chec",
         name="Mahendrawada 2025 ChEC",
         repo_id="BrentLab/mahendrawada_2025",
