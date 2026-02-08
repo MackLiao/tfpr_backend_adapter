@@ -11,7 +11,7 @@ from tfbpapi import VirtualDB
 
 from app.config import get_settings
 from app.exceptions import register_exception_handlers
-from app.routers import active_set_config, datacard, discovery, query, schema
+from app.routers import active_set_config, analysis, datacard, discovery, query, schema
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(schema.router, prefix="/api/v1")
     app.include_router(query.router, prefix="/api/v1")
     app.include_router(datacard.router, prefix="/api/v1")
+    app.include_router(analysis.router, prefix="/api/v1")
 
     return app
 

@@ -111,3 +111,83 @@ class HealthResponse(BaseModel, frozen=True):
 
     status: str
     tables_registered: int
+
+
+class AnalysisRequest(BaseModel, frozen=True):
+    """Request body for analysis data queries."""
+
+    datasets: list[str]
+    filters: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
+    numeric_filters: dict[str, dict[str, NumericRangeFilter]] = Field(
+        default_factory=dict
+    )
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=100, ge=1, le=10000)
+
+
+class SourceSummaryEntry(BaseModel, frozen=True):
+    """Summary statistics for a single dataset."""
+
+    db_name: str
+    repo_id: str
+    config_name: str
+    dataset_type: str
+    total_rows: int
+    regulator_count: int
+    target_count: int
+    sample_count: int
+    column_count: int
+    metadata_fields: list[FilterOption] = Field(default_factory=list)
+
+
+class CorrelationCell(BaseModel, frozen=True):
+    """A single cell in the correlation matrix."""
+
+    row: str
+    col: str
+    value: float
+
+
+class CorrelationRequest(BaseModel, frozen=True):
+    """Request body for correlation matrix computation."""
+
+    db_name: str
+    method: str = "pearson"
+    value_column: str = "effect"
+    group_by: str = "regulator"
+    max_items: int = Field(default=50, ge=2, le=200)
+
+
+class CorrelationMatrixResponse(BaseModel, frozen=True):
+    """Correlation matrix response."""
+
+    db_name: str
+    labels: list[str]
+    cells: list[CorrelationCell]
+    method: str
+
+
+class AnalysisDataResponse(BaseModel, frozen=True):
+    """Paginated analysis query results with dataset attribution."""
+
+    db_name: str
+    data: list[dict]
+    total: int
+    page: int
+    page_size: int
+    has_next: bool
+    columns: list[str]
+
+
+class FilterOptionsRequest(BaseModel, frozen=True):
+    """Request body for fetching unique filter values from datasets."""
+
+    datasets: list[str]
+    column: str
+
+
+class FilterOptionsResponse(BaseModel, frozen=True):
+    """Response containing unique values for a column across datasets."""
+
+    column: str
+    values: list[str]

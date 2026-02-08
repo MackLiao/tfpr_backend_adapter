@@ -73,11 +73,47 @@ def mock_vdb() -> MagicMock:
         import re
 
         sql_lower = sql.lower()
-        if "count(*)" in sql_lower:
-            return pd.DataFrame({"total": [42]}) if "total" in sql_lower else pd.DataFrame({"cnt": [42]})
 
+        # Top items queries (for correlation matrix) — CHECK THIS FIRST before COUNT(*)
+        # Pattern: SELECT column_name, COUNT(*) ... GROUP BY column_name
+        if "group by" in sql_lower:
+            # Extract the group-by column from the SQL
+            # Pattern: "SELECT column_name, COUNT(*)" or "select column_name, count(*)"
+            select_match = re.search(r"select\s+(\w+)\s*,\s*count", sql_lower)
+            if select_match:
+                col_name_lower = select_match.group(1)
+                # Find the original case column name
+                if "regulator_symbol" in sql_lower or "regulator" in sql_lower:
+                    return pd.DataFrame({
+                        "regulator_symbol": ["TF1", "TF2", "TF3"],
+                        "cnt": [100, 95, 90]
+                    })
+                elif "sample_id" in sql_lower:
+                    return pd.DataFrame({
+                        "sample_id": [1, 2, 3],
+                        "cnt": [100, 95, 90]
+                    })
+            # Default fallback for GROUP BY
+            return pd.DataFrame({
+                "regulator_symbol": ["TF1", "TF2", "TF3"],
+                "cnt": [100, 95, 90]
+            })
+
+        # CORR queries (for correlation matrix)
+        if "corr(" in sql_lower:
+            return pd.DataFrame({"correlation": [0.85]})
+
+        # MIN/MAX queries
         if "min(" in sql_lower and "max(" in sql_lower:
             return pd.DataFrame({"min_value": [0.1], "max_value": [9.9]})
+
+        # COUNT DISTINCT queries
+        if "count(distinct" in sql_lower:
+            return pd.DataFrame({"cnt": [42]})
+
+        # COUNT queries (must come after GROUP BY check)
+        if "count(*)" in sql_lower:
+            return pd.DataFrame({"total": [42]}) if "total" in sql_lower else pd.DataFrame({"cnt": [42]})
 
         # Handle "SELECT DISTINCT field AS alias" — return alias as column name
         alias_match = re.search(r"distinct\s+(\w+)\s+as\s+(\w+)", sql_lower)
@@ -89,7 +125,11 @@ def mock_vdb() -> MagicMock:
         distinct_match = re.search(r"distinct\s+(\w+)", sql_lower)
         if distinct_match:
             col = distinct_match.group(1)
-            return pd.DataFrame({col: ["glucose", "galactose", "raffinose"]})
+            # Return appropriate values based on column name
+            if "regulator" in col:
+                return pd.DataFrame({col: ["ACE2", "GAL4", "SWI4"]})
+            else:
+                return pd.DataFrame({col: ["glucose", "galactose", "raffinose"]})
 
         # Default: return sample rows
         return pd.DataFrame(
@@ -97,6 +137,8 @@ def mock_vdb() -> MagicMock:
                 "sample_id": [1, 2, 3],
                 "regulator_symbol": ["TF1", "TF2", "TF3"],
                 "effect": [0.5, -0.3, 1.2],
+                "target_locus_tag": ["YAL001C", "YAL002W", "YAL003W"],
+                "pvalue": [0.001, 0.005, 0.01],
             }
         )
 
