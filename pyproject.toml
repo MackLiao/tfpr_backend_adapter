@@ -9,8 +9,8 @@ package-mode = false
 python = "^3.11"
 fastapi = "^0.115"
 uvicorn = {extras = ["standard"], version = "^0.34"}
-tfbpapi = {path = "../tfbpapi", develop = true}
 pydantic-settings = "^2.7"
+tfbpapi = {git = "https://github.com/BrentLab/tfbpapi", rev = "dev"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3"
